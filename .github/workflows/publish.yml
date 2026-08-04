@@ -1,6 +1,11 @@
 # 各小程序仓 .github/workflows/publish.yml（模板，改 env 即可）
 # 打 tag v* → 出 onedir 包 → 扫名/PDB → zip → sha256 → 发到公开发布仓 release
 #
+# 两层 tag 别记混：本仓打的 tag 是纯版本号 v1.0.0；发布仓的 <id>-v1.0.0 由下面
+# Publish 步骤自动拼。打错成 <id>-v... 的话 CI 静默不触发，连失败记录都没有。
+# 另外两个硬前提（契约 §2/§4）：仓根要有 requirements.txt（Install deps 要用）、
+# 仓里要配 secret DIST_PUBLISH_TOKEN（跨仓发 release 要用，GITHUB_TOKEN 不够）。
+#
 # CI 到「发到发布仓」为止就结束了，**不生成、也不触发生成 catalog.json**：
 # catalog 要用 Ed25519 私钥签名，而私钥只在维护者本机、绝不进 CI Secret。
 # 维护者看到这个 workflow 跑绿之后，在自己机器上跑一次 `mstoolbox-publish`
