@@ -1,0 +1,79 @@
+# 各小程序仓 .github/workflows/publish.yml（模板，改 env 即可）
+# 打 tag v* → 出 onedir 包 → 扫名/PDB → zip → sha256 → 发到公开发布仓 release
+#
+# CI 到「发到发布仓」为止就结束了，**不生成、也不触发生成 catalog.json**：
+# catalog 要用 Ed25519 私钥签名，而私钥只在维护者本机、绝不进 CI Secret。
+# 维护者看到这个 workflow 跑绿之后，在自己机器上跑一次 `mstoolbox-publish`
+# （见接入契约 §4.1），catalog 才会更新，业务端下次打开总程序就同步到。
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  TOOL_ID: counter                         # 改成本工具 id（要与 miniprog.toml 里的 id 一致）
+                                           # 字符集见契约 §3：小写字母/数字 + 连字符或下划线分隔，
+                                           # 不能有大写、空格、中文、点号或路径分隔符
+  DIST_REPO: WangYiTao0/mstoolbox-dist   # 公开发布仓
+  BUILD_CMD: python build.py               # 本仓的 onedir 打包命令
+  DIST_DIR: dist/Tool_Counter               # onedir 产物目录
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Build (onedir)
+        run: ${{ env.BUILD_CMD }}
+
+      # 姓名 / PDB 路径扫描——命中即 fail，绝不发布
+      - name: Scan for names / user paths / PDB leaks
+        shell: pwsh
+        run: |
+          $hits = Select-String -Path "${{ env.DIST_DIR }}\*" -Pattern 'C:\\Users\\', '\.pdb$' -List -ErrorAction SilentlyContinue
+          # TODO: 追加一份姓名/工号黑名单一起扫
+          if ($hits) { $hits; throw "发现用户路径/PDB 泄露，终止发布" }
+          Write-Host "扫描通过：无姓名/用户路径泄露"
+
+      - name: Zip + sha256
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          Compress-Archive -Path "${{ env.DIST_DIR }}\*" -DestinationPath "$env:TOOL_ID-$ver.zip"
+          (Get-FileHash "$env:TOOL_ID-$ver.zip" -Algorithm SHA256).Hash.ToLower() | Out-File "$env:TOOL_ID-$ver.zip.sha256"
+
+      # 元数据随产物一起传：catalog 生成器只读公开发布仓，靠 release 上这份
+      # miniprog.toml 拿到 name / category / entry / schedulable，
+      # 不需要碰任何私有源码仓、不需要额外 token。资产名必须就叫 miniprog.toml。
+      - name: Check miniprog.toml exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "miniprog.toml")) { throw "仓根缺 miniprog.toml（接入契约 §3），catalog 生成器读不到元数据" }
+
+      # release 标签必须是 <id>-v<版本>（如 pqpr-v1.4.0）：发布仓里所有小程序共用
+      # 一套 release，生成器靠这个前缀区分来源、靠最后一个 v 之后的部分取版本号。
+      - name: Publish to dist repo
+        env:
+          GH_TOKEN: ${{ secrets.DIST_PUBLISH_TOKEN }}   # 能写发布仓的细粒度 token
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          $tag = "$env:TOOL_ID-v$ver"
+          gh release create $tag "$env:TOOL_ID-$ver.zip" "$env:TOOL_ID-$ver.zip.sha256" "miniprog.toml" `
+            --repo ${{ env.DIST_REPO }} --title $tag --notes "auto-published"
+
+      - name: 下一步（人工）
+        shell: pwsh
+        run: |
+          Write-Host "产物已发到 ${{ env.DIST_REPO }}。"
+          Write-Host "catalog 尚未更新——维护者需在本机跑：mstoolbox-publish --dry-run 确认后再 mstoolbox-publish。"
