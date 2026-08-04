@@ -29,13 +29,17 @@ MSToolbox 的同事,可以把本仓当成能直接照抄的活样例,而不是�
    逐字复制,**只改 `env` 里的 `TOOL_ID` 和 `DIST_DIR`** 这两行,其余一个
    字符都不要动。如果模板套不上自己的工具,回 MSToolbox 仓改模板,不要
    在自己仓里改造这份副本。
+5. **给仓配 secret `DIST_PUBLISH_TOKEN`**——CI 最后一步要用它把产物发到
+   公开发布仓,值是一个能写发布仓 contents 的细粒度 token,找维护者要。
+   不配的话 CI 会在发布那一步失败。
 
 ## 发版清单
 
 1. 改 `counter.py` 里的 `__version__` 常量与 `CLICK_INCREMENT` 常量。
 2. `git commit`。
-3. 打 tag,格式 `counter-v<版本号>`(如 `counter-v1.0.0`),`git push` 该
-   tag 触发 CI。
+3. 打 tag,格式 **`v<版本号>`**(如 `v1.0.0`),`git push` 该 tag 触发 CI。
+   注意这是**本仓**的 tag;发布仓那边形如 `counter-v1.0.0` 的 release 标签
+   由 CI 自动拼出来,不用你管(两层格式别混,契约 §2 写了)。
 4. CI 跑绿、产物发到发布仓后,**提醒维护者**在本机补跑一次
    `mstoolbox-publish`(先 `--dry-run` 看一眼再真发)——CI 只把产物传到
    发布仓,不会自动更新 catalog,业务端要等 catalog 刷新才能看到新版本。
