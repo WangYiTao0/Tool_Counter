@@ -11,11 +11,11 @@
 
 import tkinter as tk
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # 每次点击按钮时数字增加的量。样板仓的三个版本(v1.0.0/v1.1.0/v1.2.0)
 # 只靠改这一个数字演示两轮更新,行为差异一眼可辨。
-CLICK_INCREMENT = 2
+CLICK_INCREMENT = 3
 
 
 def main() -> None:
