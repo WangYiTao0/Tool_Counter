@@ -7,7 +7,8 @@
 - **界面契约**（pages/ + msui 三步启动 + js_api 桥）：msui 仓 README，
   https://github.com/WangYiTao0/msui 。
 
-界面按 msui 契约走：页面（pages/index.html）归本仓、只管展示；共享样式
+界面按 msui 契约走：页面（pages/index.html）归本仓、只管展示，版式全靠
+msui 的骨架约定（body 即容器、主读数挂 .display）；共享样式
 tokens.css / base.css 由 ``copy_assets`` 每次启动落进页面目录（不入仓）；
 业务留在 Python——计数状态与 CLICK_INCREMENT 都在 :class:`CounterApi`
 里，页面经 pywebview 的 js_api 桥来调，应答统一走
@@ -16,27 +17,34 @@ tokens.css / base.css 由 ``copy_assets`` 每次启动落进页面目录（不�
 发新版时只改下面两个常量附近：`__version__`（窗口标题读它）与
 `CLICK_INCREMENT`（每次点击的增量，按钮文字「+N」由页面从状态推导）。
 
-环境变量 APP_SMOKE=1 时隐藏开窗、自动驾驶一轮（点一次按钮、核对显示与
-样式、核对落地样式的版本横幅）后自关——给无人值守冒烟用，全程不上屏。
+环境变量 APP_SMOKE=1 时隐藏开窗、:class:`msui.testing.SmokeDriver`
+自动驾驶一轮（桥往返、点击 +N、样式与版式生效、版本横幅）后自关——
+给无人值守冒烟用，全程不上屏。失败收集、finally 销毁窗口、watchdog
+超时兜底都由 SmokeDriver 骨架代办。
 """
 
 from __future__ import annotations
 
 import os
 import sys
-import time
 from pathlib import Path
 
 from msui.bridge import Serializer
 from msui.resources import copy_assets
 from msui.shell import run
+from msui.testing import SmokeDriver
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 # 每次点击按钮时数字增加的量。样板仓靠只改这一个数字演示版本更新，
 # 行为差异一眼可辨。页面按钮文字「+N」从这里推导（经 get_state 下发），
 # 发新版真的只改常量，页面不用跟着改。
 CLICK_INCREMENT = 3
+
+# 本仓钉死的 msui 版本，与 requirements.txt 的 wheel URL 一致；升级 msui
+# 时两处一起改。冒烟据此断言横幅——证明冻结产物带的确实是钉的这一版，
+# 而不只是「随便哪一版落了地」。
+MSUI_PINNED = "0.4.0"
 
 
 class CounterApi:
@@ -76,106 +84,95 @@ def page_dir() -> Path:
     return Path(__file__).resolve().parent / "pages"
 
 
-def _wait_js(window, script: str, expected: str, deadline: float) -> str:
-    """轮询 evaluate_js 直到结果等于 expected 或超时；返回最后一次结果。"""
-    result = ""
-    while time.monotonic() < deadline:
-        result = window.evaluate_js(script)
-        if result == expected:
-            return result
-        time.sleep(0.2)
-    return result
+def make_smoke_script(api: CounterApi, serve_dir: Path):
+    """造冒烟脚本（照 msui README §2 的 APP_SMOKE 分支，跑在 pywebview 后台线程）。
 
-
-def _smoke(api: CounterApi, serve_dir: Path, failures: list[str]):
-    """冒烟自动驾驶（on_ready 钩子，跑在 pywebview 后台线程）。
-
-    断言四件事：桥通（按钮文字来自 Python 的增量）、点击 +N 显示正确且
-    计数确在 Python 侧、样式生效（主按钮 computedStyle 背景 == --brand
-    token 解出的色）、落地 css 首行带 msui 版本横幅。失败塞 failures，
-    主线程等 run() 返回后据此定退出码。
+    断言六件事：桥通（按钮文字来自 Python 的增量）、点击 +N 显示正确且
+    计数确在 Python 侧、样式吃进去（check_token_style：主按钮背景 ==
+    --brand）、版式地基生效（body 24px 内边距、.display 居中 48px）、
+    落地 css 横幅钉的就是 MSUI_PINNED、窗口标题带本仓版本号。
+    失败收集、finally 销毁窗口、watchdog 超时兜底都由 SmokeDriver 代办。
     """
 
-    def _run(window) -> None:
-        deadline = time.monotonic() + 15
-        try:
-            # 1. 桥通：初始渲染后按钮文字 = "+<CLICK_INCREMENT>"（值从 Python 下发）
-            got = _wait_js(
-                window,
-                "document.getElementById('add').textContent",
-                f"+{CLICK_INCREMENT}",
-                deadline,
-            )
-            if got != f"+{CLICK_INCREMENT}":
-                failures.append(f"按钮文字未从 Python 增量推导：{got!r}")
+    def smoke_script(drive: SmokeDriver, window) -> None:
+        # 1. 桥通：初始渲染后按钮文字 = "+<CLICK_INCREMENT>"（值从 Python 下发）
+        got = drive.wait_js(
+            window,
+            "document.getElementById('add').textContent",
+            f"+{CLICK_INCREMENT}",
+        )
+        drive.check(got == f"+{CLICK_INCREMENT}", f"按钮文字未从 Python 增量推导：{got!r}")
 
-            # 2. 点一次（真实 DOM 事件 → js_api 桥 → Python 计数 → 页面重绘）
-            window.evaluate_js("document.getElementById('add').click()")
-            shown = _wait_js(
-                window,
-                "document.getElementById('count').textContent",
-                str(CLICK_INCREMENT),
-                deadline,
-            )
-            if shown != str(CLICK_INCREMENT):
-                failures.append(
-                    f"点击一次后页面显示 {shown!r}，期望 {str(CLICK_INCREMENT)!r}"
-                )
-            python_count = api.get_state()["data"]["count"]
-            if python_count != CLICK_INCREMENT:
-                failures.append(f"Python 侧计数为 {python_count}，期望 {CLICK_INCREMENT}")
+        # 2. 点一次（真实 DOM 事件 → js_api 桥 → Python 计数 → 页面重绘）
+        window.evaluate_js("document.getElementById('add').click()")
+        shown = drive.wait_js(
+            window,
+            "document.getElementById('count').textContent",
+            str(CLICK_INCREMENT),
+        )
+        drive.check(
+            shown == str(CLICK_INCREMENT),
+            f"点击一次后页面显示 {shown!r}，期望 {str(CLICK_INCREMENT)!r}",
+        )
+        python_count = api.get_state()["data"]["count"]
+        drive.check(
+            python_count == CLICK_INCREMENT,
+            f"Python 侧计数为 {python_count}，期望 {CLICK_INCREMENT}",
+        )
 
-            # 3. 样式生效：主按钮实测背景色 == tokens 里 --brand 解出的色
-            style = window.evaluate_js(
-                """
-                (() => {
-                  const el = document.getElementById('add');
-                  const brand = getComputedStyle(document.documentElement)
-                    .getPropertyValue('--brand').trim();
-                  const probe = document.createElement('div');
-                  probe.style.color = brand || 'transparent';
-                  document.body.appendChild(probe);
-                  const expected = getComputedStyle(probe).color;
-                  probe.remove();
-                  return getComputedStyle(el).backgroundColor + '|' + expected;
-                })()
-                """
-            )
-            actual, _, expected = (style or "|").partition("|")
-            if not expected or actual != expected:
-                failures.append(f"主按钮背景 {actual!r} != --brand 解出的 {expected!r}")
+        # 3. 样式吃进去了：主按钮实测背景色 == --brand token 解出的 rgb
+        drive.check_token_style(window, "button.primary", "backgroundColor", "brand")
 
-            # 4. 落地样式的版本横幅：首行 /* msui X.Y.Z */
-            banner = (serve_dir / "tokens.css").read_text(encoding="utf-8").splitlines()[0]
-            if not banner.startswith("/* msui "):
-                failures.append(f"tokens.css 首行不是 msui 版本横幅：{banner!r}")
-            print(f"冒烟：title={window.title!r} 显示={shown!r} 横幅={banner!r}", flush=True)
-        except Exception as exc:  # 冒烟自身炸了也要算失败并关窗
-            failures.append(f"冒烟异常：{exc!r}")
-        finally:
-            window.destroy()
+        # 4. 版式地基生效：内容不贴窗框（body 非零内边距）、大读数居中吃 48px 档
+        pad = drive.wait_js(window, "getComputedStyle(document.body).paddingLeft", "24px")
+        drive.check(pad == "24px", f"body 左内边距该是 24px（--space-5），实测 {pad!r}")
+        readout = drive.wait_js(
+            window,
+            "(() => { const d = getComputedStyle(document.querySelector('.display'));"
+            " return d.textAlign + ' ' + d.fontSize; })()",
+            "center 48px",
+        )
+        drive.check(readout == "center 48px", f".display 该居中吃 48px 档，实测 {readout!r}")
 
-    return _run
+        # 5. 落地样式的版本横幅钉住本仓吃的 msui 版本（横幅只证明 css 落地，
+        #    「页面吃进去了」由上面 check_token_style 证明，两条各管一半）
+        banner = (serve_dir / "tokens.css").read_text(encoding="utf-8").splitlines()[0]
+        drive.check(
+            banner == f"/* msui {MSUI_PINNED} */",
+            f"tokens.css 横幅该是 '/* msui {MSUI_PINNED} */'，实测 {banner!r}",
+        )
+
+        # 6. 窗口标题跟随 __version__
+        drive.check(
+            f"v{__version__}" in window.title,
+            f"窗口标题该含 v{__version__}，实测 {window.title!r}",
+        )
+        print(
+            f"冒烟：title={window.title!r} 显示={shown!r} 横幅={banner!r}"
+            f" padding={pad!r} display={readout!r}",
+            flush=True,
+        )
+
+    return smoke_script
 
 
 def main() -> None:
     serve_dir = copy_assets(page_dir())  # 每次启动覆盖落样式，页面永远跟着装的这版 msui 走
     api = CounterApi()
-    smoke = os.environ.get("APP_SMOKE") == "1"
-    failures: list[str] = []
+    driver = (
+        SmokeDriver(make_smoke_script(api, serve_dir))
+        if os.environ.get("APP_SMOKE") == "1"
+        else None
+    )
     run(
         serve_dir / "index.html",
         js_api=api,
         title=f"Counter v{__version__}",
-        hidden=smoke,
-        on_ready=_smoke(api, serve_dir, failures) if smoke else None,
+        hidden=driver is not None,
+        on_ready=driver,
     )
-    if smoke:
-        if failures:
-            for line in failures:
-                print(f"冒烟失败：{line}", flush=True)
-            sys.exit(1)
-        print("冒烟通过", flush=True)
+    if driver is not None:
+        driver.exit()  # 有失败：逐条打印后退出码 1；全绿：打印「冒烟通过」
 
 
 if __name__ == "__main__":
