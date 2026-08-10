@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!--
+  计数器页面：只管展示，业务（计数状态与增量）全在 Python 侧的 CounterApi。
+  样式约定照 msui 契约（https://github.com/WangYiTao0/msui README §3）：
+  语义化标签直接得到统一长相，颜色只经 var(-token) 取用，零手写色值
+  （tests/test_style_gate.py 的闸门盯着）。
+  tokens.css / base.css 不入仓、不手改——启动时由 msui.resources.copy_assets
+  落进本目录（无条件覆盖，头部带 msui 版本横幅）。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Counter</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="base.css">
+</head>
+<body>
+  <h1>计数器</h1>
+  <p>点一下按钮，数字在 Python 侧累加，页面只负责显示。</p>
+  <div class="card">
+    <!-- 当前计数是本页的主角，用 h2+output 承载：零自定义样式，长相全来自 base.css -->
+    <h2><output id="count">…</output></h2>
+    <!-- 按钮文字「+N」由 JS 从后端状态里的 increment 推导，发新版只改 Python 常量 -->
+    <button class="primary" id="add" disabled>+</button>
+  </div>
+  <small>业务在 Python、页面只管展示——msui js_api 桥的最小演示。</small>
+  <script>
+    const countEl = document.getElementById("count");
+    const addBtn = document.getElementById("add");
+
+    function render(state) {
+      countEl.textContent = String(state.count);
+      addBtn.textContent = "+" + state.increment;
+      addBtn.disabled = false;
+    }
+
+    // 应答是 msui.bridge.Serializer 的信封：busy=true 表示上一次点击还在
+    // 处理中，本次就地丢弃（不排队），页面状态保持不变。
+    async function call(name) {
+      const reply = await window.pywebview.api[name]();
+      if (reply.busy) return;
+      render(reply.data);
+    }
+
+    addBtn.addEventListener("click", () => call("click"));
+    // pywebviewready：js_api 注入完成的信号，之后才允许取初始状态
+    window.addEventListener("pywebviewready", () => call("get_state"));
+  </script>
+</body>
+</html>

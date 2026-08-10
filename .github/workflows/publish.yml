@@ -38,6 +38,13 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
+      # 打包前先过闸门测试（样式闸门 + 业务桥），红了就不出产物。
+      # pytest 是开发工具，不进 requirements、不随产物分发，这里现装。
+      - name: Test (gates)
+        run: |
+          pip install pytest
+          pytest
+
       - name: Build (onedir)
         run: ${{ env.BUILD_CMD }}
 
