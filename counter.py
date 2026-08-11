@@ -34,7 +34,7 @@ from msui.resources import copy_assets
 from msui.shell import run
 from msui.testing import SmokeDriver
 
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 
 # 每次点击按钮时数字增加的量。样板仓靠只改这一个数字演示版本更新，
 # 行为差异一眼可辨。页面按钮文字「+N」从这里推导（经 get_state 下发），
@@ -44,7 +44,7 @@ CLICK_INCREMENT = 3
 # 本仓钉死的 msui 版本，与 requirements.txt 的 wheel URL 一致；升级 msui
 # 时两处一起改。冒烟据此断言横幅——证明冻结产物带的确实是钉的这一版，
 # 而不只是「随便哪一版落了地」。
-MSUI_PINNED = "0.4.0"
+MSUI_PINNED = "0.6.0"
 
 
 class CounterApi:
@@ -89,8 +89,9 @@ def make_smoke_script(api: CounterApi, serve_dir: Path):
 
     断言六件事：桥通（按钮文字来自 Python 的增量）、点击 +N 显示正确且
     计数确在 Python 侧、样式吃进去（check_token_style：主按钮背景 ==
-    --brand）、版式地基生效（body 24px 内边距、.display 居中 48px）、
-    落地 css 横幅钉的就是 MSUI_PINNED、窗口标题带本仓版本号。
+    --brand）、版式地基生效（body 24px 内边距、.display 居中 48px、+N 按钮
+    在操作行里真的居中）、落地 css 横幅钉的就是 MSUI_PINNED、窗口标题带本仓
+    版本号。
     失败收集、finally 销毁窗口、watchdog 超时兜底都由 SmokeDriver 代办。
     """
 
@@ -133,6 +134,21 @@ def make_smoke_script(api: CounterApi, serve_dir: Path):
             "center 48px",
         )
         drive.check(readout == "center 48px", f".display 该居中吃 48px 档，实测 {readout!r}")
+        # 按钮真的居中了。断言的是**用户能看见的那条不变量**——按钮的水平中心
+        # 与它所在操作行的水平中心重合——而不是 justify-content 的字面值：后者
+        # 只证明「CSS 里写了这句」，前者才证明「渲染出来真是居中的」。左对齐时
+        # 两个中心差着大半个行宽，这条当场红。1px 容差留给亚像素取整。
+        centered = drive.wait_js(
+            window,
+            "(() => { const row = document.querySelector('.actions');"
+            " const btn = document.getElementById('add');"
+            " if (!row || !btn) return 'missing';"
+            " const r = row.getBoundingClientRect(), b = btn.getBoundingClientRect();"
+            " const off = (b.left + b.width / 2) - (r.left + r.width / 2);"
+            " return Math.abs(off) <= 1 ? 'centered' : 'off:' + off.toFixed(1); })()",
+            "centered",
+        )
+        drive.check(centered == "centered", f"+N 按钮该在操作行里居中，实测 {centered!r}")
 
         # 5. 落地样式的版本横幅钉住本仓吃的 msui 版本（横幅只证明 css 落地，
         #    「页面吃进去了」由上面 check_token_style 证明，两条各管一半）

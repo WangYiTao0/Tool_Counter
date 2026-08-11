@@ -3,7 +3,8 @@
   计数器页面：只管展示，业务（计数状态与增量）全在 Python 侧的 CounterApi。
   版式照 msui README §3 的标准单列页骨架：**body 就是容器**——边距、内容
   列宽、垂直节奏全由 base.css 落在 body 上，不写一行版式 CSS；主角读数挂
-  .display（成块居中、字号走 --font-display 档 48px、数字等宽不晃动）。
+  .display（成块居中、字号走 --font-display 档 48px、数字等宽不晃动）；
+  按钮那张卡挂 .actions .center（横排 + 居中），同样不写自定义样式。
   颜色只经 var(--token) 取用，零手写色值（tests/test_style_gate.py 盯着）。
   tokens.css / base.css 不入仓、不手改——启动时由 msui.resources.copy_assets
   落进本目录（无条件覆盖，头部带 msui 版本横幅）。
@@ -20,7 +21,9 @@
   <p>点一下按钮，数字在 Python 侧累加，页面只负责显示。</p>
   <!-- 当前计数是本页主角：挂 .display 即得居中 48px 大读数，零自定义样式 -->
   <output class="display" id="count">…</output>
-  <div class="card">
+  <!-- .actions：按钮横排、间距走档；.center 让它对齐到主读数的正下方。
+       两个类都来自 base.css，本页零版式 CSS 的规矩不破。 -->
+  <div class="card actions center">
     <!-- 按钮文字「+N」由 JS 从后端状态里的 increment 推导，发新版只改 Python 常量 -->
     <button class="primary" id="add" disabled>+</button>
   </div>
