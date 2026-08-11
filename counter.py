@@ -14,6 +14,10 @@ tokens.css / base.css 由 ``copy_assets`` 每次启动落进页面目录（不�
 里，页面经 pywebview 的 js_api 桥来调，应答统一走
 :class:`msui.bridge.Serializer` 的忙碌信封。
 
+启动带 ``single_instance="counter"``（值就是 miniprog.toml 的 id）：连点
+图标只开一扇窗，第二个进程把已开的那扇带到前台后自己静默退出。这不是本仓
+的装饰而是接入契约 §2.1 的硬要求，msui 起 0.7.0 这个参数必填。
+
 发新版时只改下面两个常量附近：`__version__`（窗口标题读它）与
 `CLICK_INCREMENT`（每次点击的增量，按钮文字「+N」由页面从状态推导）。
 
@@ -34,7 +38,7 @@ from msui.resources import copy_assets
 from msui.shell import run
 from msui.testing import SmokeDriver
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 # 每次点击按钮时数字增加的量。样板仓靠只改这一个数字演示版本更新，
 # 行为差异一眼可辨。页面按钮文字「+N」从这里推导（经 get_state 下发），
@@ -44,7 +48,7 @@ CLICK_INCREMENT = 3
 # 本仓钉死的 msui 版本，与 requirements.txt 的 wheel URL 一致；升级 msui
 # 时两处一起改。冒烟据此断言横幅——证明冻结产物带的确实是钉的这一版，
 # 而不只是「随便哪一版落了地」。
-MSUI_PINNED = "0.6.0"
+MSUI_PINNED = "0.7.0"
 
 
 class CounterApi:
@@ -184,6 +188,9 @@ def main() -> None:
         serve_dir / "index.html",
         js_api=api,
         title=f"Counter v{__version__}",
+        # 连点图标只开一扇窗（msui 起 0.7.0 必填）。值就是 miniprog.toml 的 id，
+        # 别另起名字——守卫按它建全局唯一的锁，撞名的两个小程序会互相顶掉窗口。
+        single_instance="counter",
         hidden=driver is not None,
         on_ready=driver,
     )
