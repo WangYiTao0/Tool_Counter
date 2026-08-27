@@ -1,8 +1,8 @@
-# 本仓是 MSToolbox 接入契约的官方样板——想接入的同事可以把这份文件当标准
-# 答案照抄,只改成自己工具的值。字段含义见 MSToolbox 仓 docs/接入契约.md §3。
+# 本仓是 MSLaunchpad 接入契约的官方样板——想接入的同事可以把这份文件当标准
+# 答案照抄,只改成自己工具的值。字段含义见 MSLaunchpad 仓 docs/接入契约.md §3。
 
 # 全局唯一、稳定、发布后不可改——客户端把它直接当缓存目录名用
-# (%LocalAppData%\MSToolboxData\apps\<id>\<版本>\)。
+# (%LocalAppData%\MSLaunchpadData\apps\<id>\<版本>\)。
 # 字符集只能是小写字母、数字,以及作分隔用的连字符/下划线,不能以分隔符开头
 # 结尾或连写,最长 64 字符;大写、空格、中文、点号、路径写法都不合规。
 id = "counter"

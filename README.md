@@ -3,13 +3,13 @@
 ## 本仓是什么
 
 本仓是**两份契约的官方活样例**：一个计数器小程序（数字 + 一个「+N」按钮），
-除了演示「怎么接入 MSToolbox」与「怎么用 msui 做界面」之外没有别的用途。
+除了演示「怎么接入 MSLaunchpad」与「怎么用 msui 做界面」之外没有别的用途。
 想接入的同事把本仓当成能直接照抄的标准答案，而不是从契约文字里自己拼装第一版。
 
 两份契约各指一处，本 README 不复述细则：
 
-1. **MSToolbox 接入契约**（怎么打包、发布、被客户端分发）——见 MSToolbox 仓的
-   [`docs/接入契约.md`](https://github.com/WangYiTao0/MSToolbox/blob/master/docs/接入契约.md)。
+1. **MSLaunchpad 接入契约**（怎么打包、发布、被客户端分发）——见 MSLaunchpad 仓的
+   [`docs/接入契约.md`](https://github.com/WangYiTao0/MSLaunchpad/blob/master/docs/接入契约.md)。
    对应本仓：`miniprog.toml`、`build.py` + `Tool_Counter.spec`、
    `.github/workflows/publish.yml`。
 2. **msui 界面契约**（怎么开窗、页面与共享样式怎么组织、js_api 桥怎么写）——见
@@ -48,5 +48,5 @@ APP_SMOKE=1 .venv/bin/python counter.py   # 隐藏冒烟（不上屏）
    注意这是**本仓**的 tag；发布仓那边形如 `counter-v1.3.0` 的 release 标签
    由 CI 自动拼出来，不用你管（两层格式别混，接入契约 §2 写了）。
 4. CI 跑绿、产物发到发布仓后，**提醒维护者**在本机补跑一次
-   `mstoolbox-publish`（先 `--dry-run` 看一眼再真发）——CI 只把产物传到
+   `mslaunchpad-publish`（先 `--dry-run` 看一眼再真发）——CI 只把产物传到
    发布仓，不会自动更新 catalog，业务端要等 catalog 刷新才能看到新版本。

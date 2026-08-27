@@ -1,8 +1,8 @@
-"""Counter —— MSToolbox 接入契约 + msui 界面契约的官方样板应用。
+"""Counter —— MSLaunchpad 接入契约 + msui 界面契约的官方样板应用。
 
 本仓是两份契约的活样例，各自只指一处、不复述：
 
-- **接入契约**（miniprog.toml / build.py / publish.yml）：MSToolbox 仓
+- **接入契约**（miniprog.toml / build.py / publish.yml）：MSLaunchpad 仓
   docs/接入契约.md；
 - **界面契约**（pages/ + msui 三步启动 + js_api 桥）：msui 仓 README，
   https://github.com/WangYiTao0/msui 。

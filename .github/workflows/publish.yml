@@ -8,7 +8,7 @@
 #
 # CI 到「发到发布仓」为止就结束了，**不生成、也不触发生成 catalog.json**：
 # catalog 要用 Ed25519 私钥签名，而私钥只在维护者本机、绝不进 CI Secret。
-# 维护者看到这个 workflow 跑绿之后，在自己机器上跑一次 `mstoolbox-publish`
+# 维护者看到这个 workflow 跑绿之后，在自己机器上跑一次 `mslaunchpad-publish`
 # （见接入契约 §4.1），catalog 才会更新，业务端下次打开总程序就同步到。
 name: publish
 
@@ -20,7 +20,7 @@ env:
   TOOL_ID: counter                         # 改成本工具 id（要与 miniprog.toml 里的 id 一致）
                                            # 字符集见契约 §3：小写字母/数字 + 连字符或下划线分隔，
                                            # 不能有大写、空格、中文、点号或路径分隔符
-  DIST_REPO: WangYiTao0/mstoolbox-dist   # 公开发布仓
+  DIST_REPO: WangYiTao0/ms-launchpad-dist   # 公开发布仓
   BUILD_CMD: python build.py               # 本仓的 onedir 打包命令
   DIST_DIR: dist/Tool_Counter               # onedir 产物目录
 
@@ -88,4 +88,4 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "产物已发到 ${{ env.DIST_REPO }}。"
-          Write-Host "catalog 尚未更新——维护者需在本机跑：mstoolbox-publish --dry-run 确认后再 mstoolbox-publish。"
+          Write-Host "catalog 尚未更新——维护者需在本机跑：mslaunchpad-publish --dry-run 确认后再 mslaunchpad-publish。"

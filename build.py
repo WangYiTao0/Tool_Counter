@@ -8,7 +8,7 @@ dist/Tool_Counter/Tool_Counter.exe(文件夹模式,不是 onefile——接入契
 改用 .spec 文件的原因:页面目录 pages/ 要按 msui 契约收进产物
 (datas 只声明本仓自己的 pages/,msui 的样式与元数据由包自带 hook 零配置
 收齐——见 msui 仓 README「打包成冻结产物」一节),spec 是 PyInstaller 表达
-datas 的正规位置。小程序不需要 Velopack——自更新是 MSToolbox 本体客户端
+datas 的正规位置。小程序不需要 Velopack——自更新是 MSLaunchpad 本体客户端
 的事,小程序只管把 onedir 产物发布到发布仓,由客户端下载启动。
 """
 
