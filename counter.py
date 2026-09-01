@@ -38,7 +38,7 @@ from msui.resources import copy_assets
 from msui.shell import run
 from msui.testing import SmokeDriver
 
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 # 每次点击按钮时数字增加的量。样板仓靠只改这一个数字演示版本更新，
 # 行为差异一眼可辨。页面按钮文字「+N」从这里推导（经 get_state 下发），
