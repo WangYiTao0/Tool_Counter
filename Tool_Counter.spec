@@ -41,6 +41,10 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,  # 窗口程序；冒烟只看退出码，不需要控制台
+    # 任务栏/资源管理器/标题栏图标（全家风格约定：品牌红底板 + 白简笔符号，
+    # 生成脚本 assets/make_icon.py 可整份照抄、只改 draw_symbol，
+    # 约定见 msui README「图标」一节）。
+    icon=os.path.join(SPECPATH, "assets", "icon.ico"),
 )
 coll = COLLECT(
     exe,
