@@ -23,11 +23,19 @@ import pytest
 from counter import CLICK_INCREMENT, HEADLESS_RUN_LOG_NAME, __version__
 
 
-def _no_window(monkeypatch) -> list:
-    """把开窗那条路换成探针：被调到就是违约，测试要看得见。"""
+def _no_window(monkeypatch, *, lock_free: bool = True) -> list:
+    """把开窗那条路换成探针：被调到就是违约，测试要看得见。
+
+    顺带打桩单实例锁。**必须打**：msui 的锁挂在它自己的模块级变量上、随进程活到
+    死、没有释放函数，所以第一条测试抢到之后，同进程里后面每一条都会抢不到而退
+    出码 4 —— 那不是被测行为，是测试之间互相污染。
+
+    `lock_free=False` 用来演「用户手动开着这个工具」那一种。
+    """
     opened: list = []
     monkeypatch.setattr(counter, "copy_assets", lambda page_dir: page_dir)
     monkeypatch.setattr(counter, "run", lambda url, **kwargs: opened.append(kwargs))
+    monkeypatch.setattr(counter.single_instance, "acquire", lambda app_id: lock_free)
     return opened
 
 
@@ -231,3 +239,55 @@ def test_the_contract_variable_names_are_the_ones_the_client_sets():
     """两个变量名一字不差 —— 拼错的话在本机毫无症状，只在真机上「到点什么都没发生」。"""
     assert counter.HEADLESS_SIGNAL_ENV == "MSLAUNCHPAD_SCHEDULED"
     assert counter.TOOL_DATA_DIR_ENV == "MSLAUNCHPAD_DATA_DIR"
+
+
+def test_a_headless_run_gives_up_when_another_instance_holds_the_lock(monkeypatch, tmp_path, capsys):
+    """已经有一个自己的实例在跑 → 退出码 **4**，业务一行都不跑（契约 §2.4 第 4 条）。
+
+    典型场景：用户手动开着 Counter，定时到点了。这条路不调 msui.shell.run，
+    所以绕过了它的守卫，必须自己判一次；不判的话两个进程同时写同一份 data。
+
+    退 0 是最坏的：客户端会记一条「成功」并清零错过计数，而这一趟什么都没做
+    （那正是 msui 守卫在无头下 return 之后的样子）。
+    """
+    _no_window(monkeypatch, lock_free=False)
+    monkeypatch.setenv(counter.HEADLESS_SIGNAL_ENV, "1")
+    monkeypatch.setenv(counter.TOOL_DATA_DIR_ENV, str(tmp_path))
+
+    with pytest.raises(SystemExit) as excinfo:
+        counter.main()
+
+    assert excinfo.value.code == 4
+    assert not (tmp_path / HEADLESS_RUN_LOG_NAME).exists(), "抢不到锁却还是跑了业务"
+    assert "已经有一个" in capsys.readouterr().err
+
+
+def test_the_lock_id_is_the_same_on_both_paths(monkeypatch, tmp_path):
+    """无头那条路抢的锁 id 与手动开窗报的是**同一个**。
+
+    两条路各锁各的等于没锁：手动那扇窗用 id A、无头那趟用 id B，两个进程照样
+    同时跑。所以这里比的是两条路实际用的那个值。
+    """
+    seen: list = []
+    monkeypatch.setattr(counter, "copy_assets", lambda page_dir: page_dir)
+    monkeypatch.setattr(counter, "run", lambda url, **kwargs: seen.append(("window", kwargs["single_instance"])))
+    monkeypatch.setattr(counter.single_instance, "acquire", lambda app_id: seen.append(("headless", app_id)) or True)
+
+    monkeypatch.delenv(counter.HEADLESS_SIGNAL_ENV, raising=False)
+    monkeypatch.delenv("APP_SMOKE", raising=False)
+    counter.main()
+
+    monkeypatch.setenv(counter.HEADLESS_SIGNAL_ENV, "1")
+    monkeypatch.setenv(counter.TOOL_DATA_DIR_ENV, str(tmp_path))
+    counter.main()
+
+    ids = {kind: value for kind, value in seen}
+    assert ids["window"] == ids["headless"] == counter.TOOL_ID
+
+
+def test_the_tool_id_matches_miniprog_toml():
+    """TOOL_ID 与 miniprog.toml 的 id 一字不差 —— 锁按它建，写偏了就锁错东西。"""
+    import tomllib
+
+    meta = tomllib.loads((Path(__file__).resolve().parent.parent / "miniprog.toml").read_text(encoding="utf-8"))
+    assert counter.TOOL_ID == meta["id"]

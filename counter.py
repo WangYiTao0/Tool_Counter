@@ -34,12 +34,17 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from msui import single_instance
 from msui.bridge import Serializer
 from msui.resources import copy_assets
 from msui.shell import run
 from msui.testing import SmokeDriver
 
-__version__ = "1.6.0"
+__version__ = "1.7.0"
+
+# 本工具的 id，与 miniprog.toml 的 id 一字不差：单实例锁按它建（手动那条路与
+# 无头那条路必须用同一个值，否则两条路各锁各的，等于没锁）。
+TOOL_ID = "counter"
 
 # 客户端定时路径交下来的两个环境变量（接入契约 §2.2 / §2.4）。名字写死在这里
 # 而不是 import MSLaunchpad —— 小程序不依赖客户端的代码，只依赖那份契约。
@@ -49,6 +54,10 @@ TOOL_DATA_DIR_ENV = "MSLAUNCHPAD_DATA_DIR"
 # 无头跑一次往数据目录追加的那份记录。样板用它演示「跑过了」这件事可核对；
 # 真实业务工具应该换成自己该产出的东西。
 HEADLESS_RUN_LOG_NAME = "headless-runs.log"
+
+# 契约 §2.4 的退出码：3 = 未配置，4 = 已经有一个自己的实例在跑。
+EXIT_NOT_CONFIGURED = 3
+EXIT_ALREADY_RUNNING = 4
 
 # 每次点击按钮时数字增加的量。样板仓靠只改这一个数字演示版本更新，
 # 行为差异一眼可辨。页面按钮文字「+N」从这里推导（经 get_state 下发），
@@ -132,12 +141,21 @@ def run_headless() -> None:
     """
     _force_utf8_stdio()
 
+    # 自己判一次单实例（契约 §2.4 第 4 条）。这条路**不调 msui.shell.run**，
+    # 所以也绕过了它的守卫 —— 用户手动开着 Counter 时定时到点，不判的话两个
+    # 进程会同时写同一份 data。抢不到就退 4，客户端记「跳过：上一次仍在运行」，
+    # 不发通知（什么都没坏，只是这次没跑）。退 0 是最坏的：客户端会记「成功」
+    # 并清零错过计数，而这一趟什么都没做。
+    if not single_instance.acquire(TOOL_ID):
+        print("已经有一个 Counter 在跑，这一趟不跑", file=sys.stderr)
+        raise SystemExit(EXIT_ALREADY_RUNNING)
+
     target = data_dir()
     if target is None:
         # 契约的退出码 3：**未配置**。不是失败——客户端记成「未配置」而不是
         # 「失败」，用户看到的提示是「请先打开小程序设置参数」。
         print(f"没有拿到数据目录（{TOOL_DATA_DIR_ENV}），这一趟不算数", file=sys.stderr)
-        raise SystemExit(3)
+        raise SystemExit(EXIT_NOT_CONFIGURED)
 
     line = _append_run_log(target)
     print(f"Counter v{__version__} 无头跑完一次：{line}")
@@ -278,7 +296,7 @@ def main() -> None:
         title=f"Counter v{__version__}",
         # 连点图标只开一扇窗（msui 起 0.7.0 必填）。值就是 miniprog.toml 的 id，
         # 别另起名字——守卫按它建全局唯一的锁，撞名的两个小程序会互相顶掉窗口。
-        single_instance="counter",
+        single_instance=TOOL_ID,
         hidden=driver is not None,
         on_ready=driver,
     )
