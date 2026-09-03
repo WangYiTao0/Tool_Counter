@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from msui.bridge import Serializer
@@ -38,7 +39,16 @@ from msui.resources import copy_assets
 from msui.shell import run
 from msui.testing import SmokeDriver
 
-__version__ = "1.5.1"
+__version__ = "1.6.0"
+
+# 客户端定时路径交下来的两个环境变量（接入契约 §2.2 / §2.4）。名字写死在这里
+# 而不是 import MSLaunchpad —— 小程序不依赖客户端的代码，只依赖那份契约。
+HEADLESS_SIGNAL_ENV = "MSLAUNCHPAD_SCHEDULED"
+TOOL_DATA_DIR_ENV = "MSLAUNCHPAD_DATA_DIR"
+
+# 无头跑一次往数据目录追加的那份记录。样板用它演示「跑过了」这件事可核对；
+# 真实业务工具应该换成自己该产出的东西。
+HEADLESS_RUN_LOG_NAME = "headless-runs.log"
 
 # 每次点击按钮时数字增加的量。样板仓靠只改这一个数字演示版本更新，
 # 行为差异一眼可辨。页面按钮文字「+N」从这里推导（经 get_state 下发），
@@ -86,6 +96,77 @@ def page_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS) / "pages"  # type: ignore[attr-defined]
     return Path(__file__).resolve().parent / "pages"
+
+
+def data_dir() -> Path | None:
+    """本工具的数据目录，客户端经 ``MSLAUNCHPAD_DATA_DIR`` 交下来（契约 §2.2）。
+
+    没有这个变量 = 不是被 MSLaunchpad 拉起来的（开发时直接跑、或用户双击 exe）。
+    那时返回 None 而不是随便挑一个目录：往 exe 旁边写在 Program Files 下会被拒，
+    往当前目录写则取决于用户从哪儿启动的，两种都不是「这个工具的数据」。
+    """
+    raw = os.environ.get(TOOL_DATA_DIR_ENV, "").strip()
+    return Path(raw) if raw else None
+
+
+def run_headless() -> None:
+    """无头跑一次（契约 §2.4 的无头义务）。**照抄这段时请换掉中间那句业务。**
+
+    收到无头信号意味着此刻没有人在看屏幕：客户端在定时路径上背着用户拉起我们，
+    等一个退出码，并把 stdout / stderr 收进运行记录。这条路上要守三件事：
+
+    1. **不弹窗**。这里根本不调 ``msui.shell.run`` —— 它会开窗，还会走单实例
+       守卫。守卫在用户手动开着本工具时抢不到锁，会把那扇窗**带到前台**然后
+       返回，等于在没人看的时候弹窗；而且它返回后退出码仍是 0，客户端据此记
+       「成功」，可这一趟什么都没做。见 MSLaunchpad#214。
+    2. **UTF-8 stdio**。Windows 上标准输出默认跟着系统 ANSI 代码页走（简体中文
+       机器上是 GBK），中文写进 ``stdout.log`` 会变成乱码，或者直接抛
+       UnicodeEncodeError 把这一趟弄成「失败」。
+    3. **退出码报告结果**。正常返回 = 0 = 成功；未配置退 3；其余非 0 算失败。
+
+    Counter 是纯交互式计数器（``miniprog.toml`` 里 ``category = "gui"``），没有
+    「到点该产出的东西」。契约说得清楚：能不能定时跑看的是就绪文件与无头义务，
+    与 category 无关。所以这一趟只做一件**能被核对**的事——往数据目录追加一行
+    运行记录。真实业务工具应该把 ``_append_run_log`` 换成自己该干的活（生成
+    快照、归档记录），另外三件事原样保留。
+    """
+    _force_utf8_stdio()
+
+    target = data_dir()
+    if target is None:
+        # 契约的退出码 3：**未配置**。不是失败——客户端记成「未配置」而不是
+        # 「失败」，用户看到的提示是「请先打开小程序设置参数」。
+        print(f"没有拿到数据目录（{TOOL_DATA_DIR_ENV}），这一趟不算数", file=sys.stderr)
+        raise SystemExit(3)
+
+    line = _append_run_log(target)
+    print(f"Counter v{__version__} 无头跑完一次：{line}")
+
+
+def _force_utf8_stdio() -> None:
+    """把 stdout / stderr 改成 UTF-8（无头义务第 2 条）。
+
+    单独一个函数是为了能被测试直接调；``reconfigure`` 是 Python 3.7 起的
+    ``TextIOWrapper`` 方法，测试里替身可能没有它，所以先判断再调。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
+
+
+def _append_run_log(target: Path) -> str:
+    """把这一次运行追加进数据目录的 ``headless-runs.log``，返回写进去的那一行。
+
+    样板用的「可核对的业务」：真跑过之后这个文件必然多一行。只看退出码分不出
+    「真的跑了」与「什么都没做就退了 0」——MSLaunchpad#214 说的正是后一种。
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    line = f"{stamp} 增量 {CLICK_INCREMENT}"
+    with (target / HEADLESS_RUN_LOG_NAME).open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(line + "\n")
+    return line
 
 
 def make_smoke_script(api: CounterApi, serve_dir: Path):
@@ -177,6 +258,13 @@ def make_smoke_script(api: CounterApi, serve_dir: Path):
 
 
 def main() -> None:
+    # 无头信号判在最前面（契约 §2.4）：晚一步就会先 copy_assets、先建窗口对象，
+    # 而这一趟根本不该有窗口。冒烟（APP_SMOKE）走的是**另一条**路——它跑的是
+    # 测试脚本不是业务，两者不能合并成一个条件。
+    if os.environ.get(HEADLESS_SIGNAL_ENV) == "1":
+        run_headless()
+        return
+
     serve_dir = copy_assets(page_dir())  # 每次启动覆盖落样式，页面永远跟着装的这版 msui 走
     api = CounterApi()
     driver = (

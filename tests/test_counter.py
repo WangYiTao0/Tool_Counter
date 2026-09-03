@@ -38,7 +38,7 @@ def test_click_adds_increment_python_side():
 
 
 def test_version_bumped():
-    assert __version__ == "1.5.1"
+    assert __version__ == "1.6.0"
 
 
 def test_startup_reports_the_id_from_miniprog_toml(monkeypatch):
