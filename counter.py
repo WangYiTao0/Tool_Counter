@@ -9,7 +9,8 @@
 
 界面按 msui 契约走：页面（pages/index.html）归本仓、只管展示，版式全靠
 msui 的骨架约定（body 即容器、主读数挂 .display）；共享样式
-tokens.css / base.css 由 ``copy_assets`` 每次启动落进页面目录（不入仓）；
+tokens.css / base.css / tokens-light.css 由 ``copy_assets`` 每次启动落进页面
+目录（不入仓）；右上角深 / 浅主题切换按钮的定位写在入仓的 pages/layout.css；
 业务留在 Python——计数状态与 CLICK_INCREMENT 都在 :class:`CounterApi`
 里，页面经 pywebview 的 js_api 桥来调，应答统一走
 :class:`msui.bridge.Serializer` 的忙碌信封。
@@ -22,7 +23,7 @@ tokens.css / base.css 由 ``copy_assets`` 每次启动落进页面目录（不�
 `CLICK_INCREMENT`（每次点击的增量，按钮文字「+N」由页面从状态推导）。
 
 环境变量 APP_SMOKE=1 时隐藏开窗、:class:`msui.testing.SmokeDriver`
-自动驾驶一轮（桥往返、点击 +N、样式与版式生效、版本横幅）后自关——
+自动驾驶一轮（桥往返、点击 +N、样式与版式生效、版本横幅、主题切换）后自关——
 给无人值守冒烟用，全程不上屏。失败收集、finally 销毁窗口、watchdog
 超时兜底都由 SmokeDriver 骨架代办。
 """
@@ -67,7 +68,7 @@ CLICK_INCREMENT = 3
 # 本仓钉死的 msui 版本，与 requirements.txt 的 wheel URL 一致；升级 msui
 # 时两处一起改。冒烟据此断言横幅——证明冻结产物带的确实是钉的这一版，
 # 而不只是「随便哪一版落了地」。
-MSUI_PINNED = "0.7.0"
+MSUI_PINNED = "0.10.0"
 
 
 class CounterApi:
@@ -190,11 +191,11 @@ def _append_run_log(target: Path) -> str:
 def make_smoke_script(api: CounterApi, serve_dir: Path):
     """造冒烟脚本（照 msui README §2 的 APP_SMOKE 分支，跑在 pywebview 后台线程）。
 
-    断言六件事：桥通（按钮文字来自 Python 的增量）、点击 +N 显示正确且
+    断言七件事：桥通（按钮文字来自 Python 的增量）、点击 +N 显示正确且
     计数确在 Python 侧、样式吃进去（check_token_style：主按钮背景 ==
     --brand）、版式地基生效（body 24px 内边距、.display 居中 48px、+N 按钮
     在操作行里真的居中）、落地 css 横幅钉的就是 MSUI_PINNED、窗口标题带本仓
-    版本号。
+    版本号、主题切换按钮（见 :func:`_check_theme_toggle`）。
     失败收集、finally 销毁窗口、watchdog 超时兜底都由 SmokeDriver 代办。
     """
 
@@ -266,13 +267,100 @@ def make_smoke_script(api: CounterApi, serve_dir: Path):
             f"v{__version__}" in window.title,
             f"窗口标题该含 v{__version__}，实测 {window.title!r}",
         )
+        # 7. 主题切换按钮（三个已发版小程序同一套写法）
+        theme = _check_theme_toggle(drive, window)
         print(
             f"冒烟：title={window.title!r} 显示={shown!r} 横幅={banner!r}"
-            f" padding={pad!r} display={readout!r}",
+            f" padding={pad!r} display={readout!r} 主题={theme!r}",
             flush=True,
         )
 
     return smoke_script
+
+
+# 主题切换按钮的页面探针。一次取齐「用户看得见的状态」：当前主题、按钮写的
+# 动作（aria-label 与 title）、露出的是太阳还是月亮、localStorage 里记的值。
+_THEME_STATE_JS = (
+    "(() => { const btn = document.getElementById('theme-toggle');"
+    " if (!btn) return 'missing';"
+    " const shown = (sel) => { const el = btn.querySelector(sel);"
+    "   return !!el && getComputedStyle(el).display !== 'none'; };"
+    " let stored; try { stored = localStorage.getItem('msui-theme') ?? 'none'; }"
+    " catch (e) { stored = 'no-storage'; }"
+    " return [document.documentElement.dataset.theme || 'dark',"
+    "   btn.getAttribute('aria-label'), btn.title,"
+    "   shown('.sun') && !shown('.moon') ? 'sun' : (shown('.moon') && !shown('.sun') ? 'moon' : 'both-or-none'),"
+    "   stored].join('|'); })()"
+)
+_THEME_DARK = "dark|切换到浅色|切换到浅色|sun|none"
+_THEME_LIGHT = "light|切换到深色|切换到深色|moon|light"
+
+# 钉在右上角：position fixed，离窗口上沿、右沿各一个 --space-3。
+_THEME_PLACEMENT_JS = (
+    "(() => { const btn = document.getElementById('theme-toggle');"
+    " if (!btn || !btn.matches('button.icon')) return 'missing';"
+    " const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-3'));"
+    " const r = btn.getBoundingClientRect();"
+    " const top = r.top, right = document.documentElement.clientWidth - r.right;"
+    " const ok = Math.abs(top - gap) <= 0.5 && Math.abs(right - gap) <= 0.5;"
+    " return getComputedStyle(btn).position + '|' + (ok ? 'corner' :"
+    "   'top=' + top.toFixed(1) + ',right=' + right.toFixed(1) + ',want=' + gap); })()"
+)
+
+# 不进文档流：把按钮从 DOM 里摘掉前后各量一次 body 下其余每个顶层块的位置与
+# 尺寸，两次一模一样才算——比的是「不加按钮时的版式」本身，而不是
+# position 的字面值（fixed 写了但被 margin / 兄弟选择器带歪的，这里照样红）。
+_THEME_OUT_OF_FLOW_JS = (
+    "(() => { const btn = document.getElementById('theme-toggle');"
+    " if (!btn) return 'missing';"
+    " const snap = () => JSON.stringify([...document.body.children]"
+    "   .filter((el) => el !== btn && el.tagName !== 'SCRIPT')"
+    "   .map((el) => { const r = el.getBoundingClientRect();"
+    "     return [el.tagName, r.left, r.top, r.width, r.height]; }));"
+    " const withBtn = snap(); const parent = btn.parentNode, next = btn.nextSibling;"
+    " btn.remove(); const without = snap(); parent.insertBefore(btn, next);"
+    " return withBtn === without ? 'same' : 'moved: ' + withBtn + ' vs ' + without; })()"
+)
+
+_BODY_COLORS_JS = (
+    "(() => { const b = getComputedStyle(document.body);"
+    " return b.color + ' on ' + b.backgroundColor; })()"
+)
+
+
+def _check_theme_toggle(drive: SmokeDriver, window) -> str:
+    """主题切换按钮：在、钉在右上角、不占文档流、点一下变浅色、再点回深色。
+
+    浅色那一步除了看 ``data-theme`` 翻过去，还用 ``check_token_style`` 核对
+    body 的字色真的换成了浅色那套 ``--text``、且与深色时不同——只翻属性
+    而 tokens-light.css 的 ``<link>`` 丢了的话，属性对了、颜色没变，这条红。
+    回深色后颜色必须与开头一字不差（关掉开关 = 一个像素不变）。
+    """
+    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_DARK)
+    drive.check(state == _THEME_DARK, f"开窗时该是深色、按钮写「切换到浅色」露太阳，实测 {state!r}")
+
+    placed = drive.wait_js(window, _THEME_PLACEMENT_JS, "fixed|corner")
+    drive.check(placed == "fixed|corner", f"主题按钮该 fixed 钉在右上角（各留 --space-3），实测 {placed!r}")
+
+    flow = drive.wait_js(window, _THEME_OUT_OF_FLOW_JS, "same")
+    drive.check(flow == "same", f"主题按钮占了文档流，其余元素位置变了：{flow}")
+
+    dark_colors = window.evaluate_js(_BODY_COLORS_JS)
+
+    window.evaluate_js("document.getElementById('theme-toggle').click()")
+    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_LIGHT)
+    drive.check(state == _THEME_LIGHT, f"点一下该切到浅色、按钮改写「切换到深色」露月亮、记进 localStorage，实测 {state!r}")
+    drive.check_token_style(window, "body", "color", "text")
+    drive.check_token_style(window, "body", "backgroundColor", "win")
+    light_colors = window.evaluate_js(_BODY_COLORS_JS)
+    drive.check(light_colors != dark_colors, f"切到浅色后 body 配色没变（tokens-light.css 没吃进去？）：{light_colors!r}")
+
+    window.evaluate_js("document.getElementById('theme-toggle').click()")
+    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_DARK)
+    drive.check(state == _THEME_DARK, f"再点一下该回深色、清掉 localStorage，实测 {state!r}")
+    back = window.evaluate_js(_BODY_COLORS_JS)
+    drive.check(back == dark_colors, f"回深色后配色该与开窗时一致：开窗 {dark_colors!r}，回来 {back!r}")
+    return f"{dark_colors} → {light_colors}"
 
 
 def main() -> None:

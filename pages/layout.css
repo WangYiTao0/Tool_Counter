@@ -1,0 +1,8 @@
+/* 主题切换按钮：钉在窗口右上角，不进文档流，深色下其余版式不变。
+   margin: 0 —— base.css 的垂直节奏 `body > * + * { margin-top }` 也会落到这颗
+   按钮上（它是 body 的子元素、前面有兄弟），fixed 元素的 margin 照样生效，
+   不清零的话按钮实际离上沿是 --space-3 + --space-5，不在角上。 */
+.theme-toggle { position: fixed; top: var(--space-3); right: var(--space-3); z-index: 10; margin: 0; }
+.theme-toggle .moon { display: none; }
+:root[data-theme="light"] .theme-toggle .sun { display: none; }
+:root[data-theme="light"] .theme-toggle .moon { display: inline; }

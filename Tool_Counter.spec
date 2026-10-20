@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller onedir spec（照抄 msui 仓 examples/minimal/app.spec，只改入口
 # 与 name）。关键点：对 msui 的资源与元数据**零配置**——tokens.css /
-# base.css / dist-info 全由 msui 包自带的 pyinstaller40 hook 收齐。
+# base.css / tokens-light.css / dist-info 全由 msui 包自带的 pyinstaller40
+# hook 收齐。
 # datas 只声明自己持有的页面目录。
 # name 必须是 Tool_Counter：产物目录 dist/Tool_Counter/ 与 miniprog.toml
 # 的 entry = "Tool_Counter.exe" 都钉在这个名字上（接入契约 §2）。
@@ -19,13 +20,13 @@ a = Analysis(
     noarchive=False,
 )
 
-# 开发机上冒烟落地过的 tokens.css / base.css 副本（gitignored、但在盘上）
-# 会被 pages/ 整目录收集顺手带进产物——纯冗余：运行时 copy_assets 每次启动
-# 都无条件覆盖，产物里那两份副本永远不会被用到。按目的地路径剔掉；CI 的
-# 干净 checkout 本来就没有它们，此过滤不改变 CI 产物。
+# 开发机上冒烟落地过的 tokens.css / base.css / tokens-light.css 副本
+# （gitignored、但在盘上）会被 pages/ 整目录收集顺手带进产物——纯冗余：运行时
+# copy_assets 每次启动都无条件覆盖，产物里那几份副本永远不会被用到。按目的地
+# 路径剔掉；CI 的干净 checkout 本来就没有它们，此过滤不改变 CI 产物。
 def _is_landed_css(dest: str) -> bool:
     parts = dest.replace("\\", "/").split("/")
-    return parts[0] == "pages" and parts[-1] in ("tokens.css", "base.css")
+    return parts[0] == "pages" and parts[-1] in ("tokens.css", "base.css", "tokens-light.css")
 
 a.datas = [entry for entry in a.datas if not _is_landed_css(entry[0])]
 
