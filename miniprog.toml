@@ -25,6 +25,9 @@ entry = "Tool_Counter.exe"
 # 列表里消失。必须写不带引号的 bool,写成 "true" 字符串会被生成器当类型错拦下。
 dev_only = true
 
-# 契约刻意不在本文件里写 icon / schedule ——这两个字段目前是死字段
-# (契约 §3 已注明:写了也不会报错,但生成器不读、不会带进 catalog)。
-# 等图标分发、定时调度这两件事各自设计定型后再补,现在写了纯属误导。
+# 总程序工具列表里显示的图标:仓内 256×256 透明 PNG,≤ 64 KB,和 exe 图标是同一个
+# 图形,由 assets/make_icon.py 一次生成(tests/test_icon_gate.py 盯着)。
+icon = "assets/icon.png"
+
+# 契约刻意不在本文件里写 schedule ——目前是死字段(契约 §3 已注明:写了也不会
+# 报错,但生成器不读、不会带进 catalog)。等定时调度设计定型后再补。
