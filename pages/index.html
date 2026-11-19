@@ -6,10 +6,11 @@
   .display（成块居中、字号走 --font-display 档 48px、数字等宽不晃动）；
   按钮那张卡挂 .actions .center（横排 + 居中），同样不写自定义样式。
   颜色只经 var(--token) 取用，零手写色值（tests/test_style_gate.py 盯着）。
-  tokens.css / base.css / tokens-light.css 不入仓、不手改——启动时由
+  tokens.css / base.css / tokens-light.css / theme.js / runlog.js 不入仓、不手改——启动时由
   msui.resources.copy_assets 落进本目录（无条件覆盖，头部带 msui 版本横幅）。
-  右上角的深 / 浅主题切换按钮是三个已发版小程序的统一写法：浅色全部颜色只来自
-  msui 官方 tokens-light.css；按钮自己的定位写在 layout.css（入仓，只用新类名）。
+  右上角的深 / 浅主题切换按钮是 msui 的标准写法（theme.js + data-theme-toggle，
+  msui README「深浅切换按钮」）：浅色全部颜色只来自 msui 官方 tokens-light.css，
+  图标显隐归 base.css；按钮自己的定位写在 layout.css（入仓，只用新类名）。
 -->
 <html lang="zh-CN">
 <head>
@@ -18,9 +19,9 @@
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="tokens-light.css">
+  <!-- 同步引用（不加 defer / async）：开窗前就把主题设好，不先闪一下深色 -->
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="layout.css">
-  <!-- 首帧前先应用已存的主题，免得浅色用户先闪一下深色（按钮文案在主脚本里再刷一次） -->
-  <script>try { if (localStorage.getItem("msui-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}</script>
 </head>
 <body>
   <h1>计数器</h1>
@@ -34,34 +35,13 @@
     <button class="primary" id="add" disabled>+</button>
   </div>
   <small>业务在 Python、页面只管展示——msui js_api 桥的最小演示。</small>
-  <!-- 深 / 浅主题切换：fixed 钉在右上角、不占文档流；图标是内联 svg（不用 Unicode / emoji） -->
-  <button class="icon theme-toggle" id="theme-toggle" type="button" aria-label="切换到浅色" title="切换到浅色">
-    <svg class="sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-    </svg>
-    <svg class="moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-    </svg>
+  <!-- 深 / 浅主题切换：msui 标准按钮，点击由 theme.js 接管；.theme-toggle 只管
+       fixed 钉在右上角、不占文档流（layout.css）。深色下显示太阳、浅色下显示月亮 -->
+  <button class="icon theme-toggle" type="button" data-theme-toggle aria-label="切换深色 / 浅色">
+    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
   </button>
   <script>
-    // 主题：存 localStorage 键 "msui-theme"，值 "light" 或缺省（深色）。
-    const THEME_KEY = "msui-theme";
-    function applyTheme(light) {
-      const root = document.documentElement;
-      if (light) root.dataset.theme = "light"; else delete root.dataset.theme;
-      const btn = document.getElementById("theme-toggle");
-      if (btn) {
-        const label = light ? "切换到深色" : "切换到浅色";
-        btn.setAttribute("aria-label", label); btn.title = label;
-      }
-    }
-    try { applyTheme(localStorage.getItem(THEME_KEY) === "light"); } catch (e) { /* 无存储时就是深色 */ }
-    document.getElementById("theme-toggle").addEventListener("click", () => {
-      const light = document.documentElement.dataset.theme !== "light";
-      applyTheme(light);
-      try { if (light) localStorage.setItem(THEME_KEY, "light"); else localStorage.removeItem(THEME_KEY); } catch (e) {}
-    });
-
     const countEl = document.getElementById("count");
     const addBtn = document.getElementById("add");
 

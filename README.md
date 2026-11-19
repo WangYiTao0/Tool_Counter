@@ -23,15 +23,20 @@
   `counter.py` 的 `CounterApi` 里，页面经 pywebview 的 js_api 桥来调，
   应答走 `msui.bridge.Serializer` 的忙碌信封（连点丢弃、不排队）。
 - **样式零手写**：`pages/index.html` 只写语义化标签，长相全来自 msui 启动时
-  落进来的 `tokens.css` / `base.css` / `tokens-light.css`（不入仓，见
-  `pages/.gitignore`）；唯一一份自有样式 `pages/layout.css`（入仓）只放右上角
-  深 / 浅主题切换按钮的定位，浅色配色全部来自 msui 官方 `tokens-light.css`；
+  落进来的 `tokens.css` / `base.css` / `tokens-light.css`，深浅切换由同样落进来的
+  `theme.js` 接管（这几份和 `runlog.js` 都不入仓，见 `pages/.gitignore`）；唯一一份
+  自有样式 `pages/layout.css`（入仓）只放右上角主题按钮的定位，浅色配色全部来自
+  msui 官方 `tokens-light.css`。主题默认浅色；`run()` 没给 `storage_dir`，所以偏好
+  关窗即清，每次开窗都是浅色；
   `tests/test_style_gate.py` 的三条闸门盯着对比度（深浅两套）、游离色值、
   自有 css 不许重定义 base.css 选择器。
+- **图标**：`assets/make_icon.py` 一次生成 exe 用的 `assets/icon.ico`（四档，spec 的
+  EXE 挂上）和总程序工具列表用的 `assets/icon.png`（256×256，`miniprog.toml` 的
+  `icon` 指向它），两份入仓；`tests/test_icon_gate.py` 调 msui 的图标检查盯着。
 - **打包对 msui 零资源配置**：`Tool_Counter.spec` 的 `datas` 只声明本仓自己的
   `pages/`，msui 的样式与元数据由包自带 hook 收齐。
 - **无人值守冒烟**：`APP_SMOKE=1` 隐藏开窗、自动点一次按钮核对显示/样式/
-  msui 版本横幅、主题按钮切浅色再切回后自关（照 msui examples 的做法扩展了断言）。
+  msui 版本横幅、主题按钮从浅色切深色再切回后自关（照 msui examples 的做法扩展了断言）。
 
 ## 本地开发
 

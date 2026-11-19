@@ -28,7 +28,7 @@ def test_pages_gitignore_lists_every_landed_asset():
 def test_spec_filters_every_landed_asset_out_of_the_bundle():
     spec = (REPO_ROOT / "Tool_Counter.spec").read_text(encoding="utf-8")
     m = re.search(r"parts\[-1\] in \(([^)]*)\)", spec)
-    assert m, "Tool_Counter.spec 里找不到 _is_landed_css 的文件名元组"
+    assert m, "Tool_Counter.spec 里找不到 _is_landed_asset 的文件名元组"
     filtered = set(re.findall(r'"([^"]+)"', m.group(1)))
     missing = set(ASSET_NAMES) - filtered
     assert not missing, f"Tool_Counter.spec 的副本过滤缺：{sorted(missing)}"

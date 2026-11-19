@@ -9,7 +9,7 @@
 
 界面按 msui 契约走：页面（pages/index.html）归本仓、只管展示，版式全靠
 msui 的骨架约定（body 即容器、主读数挂 .display）；共享样式
-tokens.css / base.css / tokens-light.css 由 ``copy_assets`` 每次启动落进页面
+tokens.css / base.css / tokens-light.css / theme.js / runlog.js 由 ``copy_assets`` 每次启动落进页面
 目录（不入仓）；右上角深 / 浅主题切换按钮的定位写在入仓的 pages/layout.css；
 业务留在 Python——计数状态与 CLICK_INCREMENT 都在 :class:`CounterApi`
 里，页面经 pywebview 的 js_api 桥来调，应答统一走
@@ -68,7 +68,7 @@ CLICK_INCREMENT = 3
 # 本仓钉死的 msui 版本，与 requirements.txt 的 wheel URL 一致；升级 msui
 # 时两处一起改。冒烟据此断言横幅——证明冻结产物带的确实是钉的这一版，
 # 而不只是「随便哪一版落了地」。
-MSUI_PINNED = "0.10.0"
+MSUI_PINNED = "0.13.0"
 
 
 class CounterApi:
@@ -278,26 +278,33 @@ def make_smoke_script(api: CounterApi, serve_dir: Path):
     return smoke_script
 
 
+# 主题按钮的选择器（msui 标准按钮靠 data-theme-toggle 认，不靠 id）。
+_THEME_BTN = "document.querySelector('[data-theme-toggle]')"
+
 # 主题切换按钮的页面探针。一次取齐「用户看得见的状态」：当前主题、按钮写的
 # 动作（aria-label 与 title）、露出的是太阳还是月亮、localStorage 里记的值。
+# 按钮由 msui 的 theme.js 接管（msui 0.11.0 起）：偏好存 localStorage 的 theme 键，
+# 'light' = 浅色、'' = 用户选了深色、没存过按浅色。本仓 run() 没给 storage_dir，
+# 关窗即清，所以每次开窗都是没存过 → 浅色。
 _THEME_STATE_JS = (
-    "(() => { const btn = document.getElementById('theme-toggle');"
+    "(() => { const btn = " + _THEME_BTN + ";"
     " if (!btn) return 'missing';"
     " const shown = (sel) => { const el = btn.querySelector(sel);"
     "   return !!el && getComputedStyle(el).display !== 'none'; };"
-    " let stored; try { stored = localStorage.getItem('msui-theme') ?? 'none'; }"
+    " let stored; try { const v = localStorage.getItem('theme'); stored = v === null ? 'none' : (v || 'empty'); }"
     " catch (e) { stored = 'no-storage'; }"
     " return [document.documentElement.dataset.theme || 'dark',"
     "   btn.getAttribute('aria-label'), btn.title,"
     "   shown('.sun') && !shown('.moon') ? 'sun' : (shown('.moon') && !shown('.sun') ? 'moon' : 'both-or-none'),"
     "   stored].join('|'); })()"
 )
-_THEME_DARK = "dark|切换到浅色|切换到浅色|sun|none"
-_THEME_LIGHT = "light|切换到深色|切换到深色|moon|light"
+_THEME_OPEN = "light|切换到深色|切换到深色|moon|none"  # 开窗：没存过 → 浅色
+_THEME_DARK = "dark|切换到浅色|切换到浅色|sun|empty"  # 点一下：深色，存 ''
+_THEME_LIGHT = "light|切换到深色|切换到深色|moon|light"  # 再点：浅色，存 'light'
 
 # 钉在右上角：position fixed，离窗口上沿、右沿各一个 --space-3。
 _THEME_PLACEMENT_JS = (
-    "(() => { const btn = document.getElementById('theme-toggle');"
+    "(() => { const btn = " + _THEME_BTN + ";"
     " if (!btn || !btn.matches('button.icon')) return 'missing';"
     " const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-3'));"
     " const r = btn.getBoundingClientRect();"
@@ -311,7 +318,7 @@ _THEME_PLACEMENT_JS = (
 # 尺寸，两次一模一样才算——比的是「不加按钮时的版式」本身，而不是
 # position 的字面值（fixed 写了但被 margin / 兄弟选择器带歪的，这里照样红）。
 _THEME_OUT_OF_FLOW_JS = (
-    "(() => { const btn = document.getElementById('theme-toggle');"
+    "(() => { const btn = " + _THEME_BTN + ";"
     " if (!btn) return 'missing';"
     " const snap = () => JSON.stringify([...document.body.children]"
     "   .filter((el) => el !== btn && el.tagName !== 'SCRIPT')"
@@ -329,15 +336,15 @@ _BODY_COLORS_JS = (
 
 
 def _check_theme_toggle(drive: SmokeDriver, window) -> str:
-    """主题切换按钮：在、钉在右上角、不占文档流、点一下变浅色、再点回深色。
+    """主题切换按钮：在、钉在右上角、不占文档流；开窗浅色，点一下变深色，再点回浅色。
 
-    浅色那一步除了看 ``data-theme`` 翻过去，还用 ``check_token_style`` 核对
-    body 的字色真的换成了浅色那套 ``--text``、且与深色时不同——只翻属性
-    而 tokens-light.css 的 ``<link>`` 丢了的话，属性对了、颜色没变，这条红。
-    回深色后颜色必须与开头一字不差（关掉开关 = 一个像素不变）。
+    深色那一步除了看 ``data-theme`` 翻过去，还用 ``check_token_style`` 核对
+    body 的字色、底色真的是当前那套 ``--text`` / ``--win``，且与浅色时不同——只翻
+    属性而 tokens-light.css 的 ``<link>`` 丢了的话，两套颜色一样，这条红。
+    回浅色后颜色必须与开窗时一字不差。
     """
-    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_DARK)
-    drive.check(state == _THEME_DARK, f"开窗时该是深色、按钮写「切换到浅色」露太阳，实测 {state!r}")
+    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_OPEN)
+    drive.check(state == _THEME_OPEN, f"开窗时该是浅色、按钮写「切换到深色」露月亮、没存偏好，实测 {state!r}")
 
     placed = drive.wait_js(window, _THEME_PLACEMENT_JS, "fixed|corner")
     drive.check(placed == "fixed|corner", f"主题按钮该 fixed 钉在右上角（各留 --space-3），实测 {placed!r}")
@@ -345,22 +352,22 @@ def _check_theme_toggle(drive: SmokeDriver, window) -> str:
     flow = drive.wait_js(window, _THEME_OUT_OF_FLOW_JS, "same")
     drive.check(flow == "same", f"主题按钮占了文档流，其余元素位置变了：{flow}")
 
-    dark_colors = window.evaluate_js(_BODY_COLORS_JS)
+    light_colors = window.evaluate_js(_BODY_COLORS_JS)
 
-    window.evaluate_js("document.getElementById('theme-toggle').click()")
-    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_LIGHT)
-    drive.check(state == _THEME_LIGHT, f"点一下该切到浅色、按钮改写「切换到深色」露月亮、记进 localStorage，实测 {state!r}")
+    window.evaluate_js(_THEME_BTN + ".click()")
+    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_DARK)
+    drive.check(state == _THEME_DARK, f"点一下该切到深色、按钮改写「切换到浅色」露太阳、存 ''，实测 {state!r}")
     drive.check_token_style(window, "body", "color", "text")
     drive.check_token_style(window, "body", "backgroundColor", "win")
-    light_colors = window.evaluate_js(_BODY_COLORS_JS)
-    drive.check(light_colors != dark_colors, f"切到浅色后 body 配色没变（tokens-light.css 没吃进去？）：{light_colors!r}")
+    dark_colors = window.evaluate_js(_BODY_COLORS_JS)
+    drive.check(dark_colors != light_colors, f"切到深色后 body 配色没变（tokens-light.css 没吃进去？）：{dark_colors!r}")
 
-    window.evaluate_js("document.getElementById('theme-toggle').click()")
-    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_DARK)
-    drive.check(state == _THEME_DARK, f"再点一下该回深色、清掉 localStorage，实测 {state!r}")
+    window.evaluate_js(_THEME_BTN + ".click()")
+    state = drive.wait_js(window, _THEME_STATE_JS, _THEME_LIGHT)
+    drive.check(state == _THEME_LIGHT, f"再点一下该回浅色、存 'light'，实测 {state!r}")
     back = window.evaluate_js(_BODY_COLORS_JS)
-    drive.check(back == dark_colors, f"回深色后配色该与开窗时一致：开窗 {dark_colors!r}，回来 {back!r}")
-    return f"{dark_colors} → {light_colors}"
+    drive.check(back == light_colors, f"回浅色后配色该与开窗时一致：开窗 {light_colors!r}，回来 {back!r}")
+    return f"{light_colors} → {dark_colors}"
 
 
 def main() -> None:
